@@ -186,7 +186,6 @@ class ShelfRow extends StatelessWidget {
         // Don't keep off-screen covers alive — major win with IndexedStack tabs.
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
-        cacheExtent: CoverCard.width * 2,
         separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: itemBuilder,
       ),

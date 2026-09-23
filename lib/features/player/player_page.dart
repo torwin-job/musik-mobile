@@ -25,7 +25,6 @@ class PlayerPage extends ConsumerWidget {
           : ListView(
               key: const PageStorageKey('player-scroll'),
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-              cacheExtent: 200,
               addAutomaticKeepAlives: false,
               children: const [
                 _PlayerError(),
@@ -254,11 +253,7 @@ class _CurrentRelated extends ConsumerWidget {
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) => FadeTransition(
         opacity: animation,
-        child: SizeTransition(
-          sizeFactor: animation,
-          axisAlignment: -1,
-          child: child,
-        ),
+        child: SizeTransition(sizeFactor: animation, child: child),
       ),
       child: track == null
           ? const SizedBox.shrink()
@@ -748,11 +743,7 @@ class _RelatedSection extends ConsumerWidget {
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (child, animation) => FadeTransition(
         opacity: animation,
-        child: SizeTransition(
-          sizeFactor: animation,
-          axisAlignment: -1,
-          child: child,
-        ),
+        child: SizeTransition(sizeFactor: animation, child: child),
       ),
       child: child,
     );
