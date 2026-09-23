@@ -34,20 +34,19 @@ flutter test
 
 Build output, signing keys, local SDK paths and environment files are ignored.
 The source is available under the [MIT License](LICENSE).
-# musik_app
 
-A new Flutter project.
+## Public Android release
 
-## Getting Started
+Public APKs must not contain a server URL, API token, or password. Users enter
+their own self-hosted server URL and credentials on first launch.
 
-This project is a starting point for a Flutter application.
+Create a private signing key once and keep it for every future update:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+cp android/key.properties.example android/key.properties
+# Fill in private values and point storeFile at your private .jks file.
+flutter build apk --release
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Never commit `android/key.properties` or the keystore. Losing the keystore means
+future APKs cannot update an installed release.
