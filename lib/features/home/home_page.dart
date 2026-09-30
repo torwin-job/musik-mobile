@@ -87,6 +87,7 @@ class HomePage extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               // Only build visible shelves — was building ~80 covers at once.
               itemCount: sections.length,
+              cacheExtent: 0,
               addAutomaticKeepAlives: false,
               itemBuilder: (context, i) => sections[i](context, ref),
             );

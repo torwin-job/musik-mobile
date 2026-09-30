@@ -30,6 +30,7 @@ class ArtistPage extends ConsumerWidget {
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             child: CustomScrollView(
+              cacheExtent: 0,
               key: PageStorageKey('artist-$artist'),
               slivers: [
                 SliverToBoxAdapter(

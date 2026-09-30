@@ -143,6 +143,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                               (t.album ?? '').toLowerCase().contains(q);
                         }).toList();
                         return ListView.builder(
+                          cacheExtent: 0,
                           key: const PageStorageKey('library-tracks'),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                           itemCount: items.length,
@@ -167,6 +168,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                           return a.artist.toLowerCase().contains(q);
                         }).toList();
                         return ListView.builder(
+                          cacheExtent: 0,
                           key: const PageStorageKey('library-artists'),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                           itemCount: items.length,
@@ -194,6 +196,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                               a.artist.toLowerCase().contains(q);
                         }).toList();
                         return ListView.builder(
+                          cacheExtent: 0,
                           key: const PageStorageKey('library-albums'),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                           itemCount: items.length,
@@ -252,6 +255,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                             (kind: 'album', value: album),
                         ];
                         return ListView.builder(
+                          cacheExtent: 0,
                           key: const PageStorageKey('library-favorites'),
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                           itemCount: rows.length,
@@ -333,6 +337,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                         );
                       }
                       return ListView.builder(
+                        cacheExtent: 0,
                         key: const PageStorageKey('library-later'),
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
                         itemCount: items.length + 1,

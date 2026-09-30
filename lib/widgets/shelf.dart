@@ -183,7 +183,8 @@ class ShelfRow extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 4),
         itemCount: itemCount,
-        // Don't keep off-screen covers alive — major win with IndexedStack tabs.
+        // Only the cards on screen are built, so only those request covers.
+        cacheExtent: 0,
         addAutomaticKeepAlives: false,
         addRepaintBoundaries: true,
         separatorBuilder: (_, _) => const SizedBox(width: 12),

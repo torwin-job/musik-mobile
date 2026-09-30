@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -10,6 +11,16 @@ import 'package:path_provider/path_provider.dart';
 import '../data/models/models.dart';
 
 const _filesChannel = MethodChannel('com.musik.musik_app/files');
+const _playbackLockChannel = MethodChannel('com.musik.musik_app/playback_lock');
+
+/// Keep CPU + Wi-Fi awake while audio plays. Screen-off power save otherwise
+/// freezes ExoPlayer's HTTP buffer until the display turns back on.
+Future<void> _setPlaybackNetworkLock(bool hold) async {
+  if (kIsWeb || !Platform.isAndroid) return;
+  try {
+    await _playbackLockChannel.invokeMethod<void>(hold ? 'acquire' : 'release');
+  } catch (_) {}
+}
 
 /// Dark placeholder — avoids the white square when cover is missing/unreadable.
 Uri androidDefaultArtUri() =>
@@ -28,8 +39,44 @@ AudioLoadConfiguration mobileAudioLoadConfiguration() =>
       ),
     );
 
-AudioPlayer createMusikAudioPlayer() =>
-    AudioPlayer(audioLoadConfiguration: mobileAudioLoadConfiguration());
+AudioPlayer createMusikAudioPlayer() {
+  final player = AudioPlayer(
+    audioLoadConfiguration: mobileAudioLoadConfiguration(),
+  );
+  // Media usage so a new player started with the screen off is still audible.
+  unawaited(
+    player.setAndroidAudioAttributes(
+      const AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.music,
+        usage: AndroidAudioUsage.media,
+      ),
+    ),
+  );
+  return player;
+}
+
+var _audioSessionReady = false;
+
+/// Audio focus plus the radio lock. Without focus, Android keeps the timeline
+/// moving on the lock screen but mutes the stream.
+Future<void> _holdBackgroundAudio() async {
+  unawaited(_setPlaybackNetworkLock(true));
+  try {
+    final session = await AudioSession.instance;
+    if (!_audioSessionReady) {
+      await session.configure(const AudioSessionConfiguration.music());
+      _audioSessionReady = true;
+    }
+    await session.setActive(true);
+  } catch (_) {}
+}
+
+Future<void> _releaseAudioFocus() async {
+  try {
+    final session = await AudioSession.instance;
+    await session.setActive(false);
+  } catch (_) {}
+}
 
 /// System media session (notification / lock screen / headset).
 /// Dual players: active for current; standby only while prefetch is held.
@@ -56,6 +103,10 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> Function()? onSkipNext;
   Future<void> Function()? onCompleted;
+
+  /// Real pause/stop. Track changes must not look like a pause, or Android
+  /// drops the playback service and the next song dies after its first buffer.
+  var _userPaused = false;
 
   void _bindActiveListeners() {
     _eventSub?.cancel();
@@ -90,16 +141,28 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
-    // just_audio's play()/pause() Futures often never complete on Android
-    // when used under audio_service — fire and sync via playback events.
-    unawaited(player.play());
+    _userPaused = false;
+    unawaited(_holdBackgroundAudio());
+    // Volume before play, in order. A muted standby used to survive the swap
+    // and the lock screen then advanced with no sound.
+    unawaited(() async {
+      try {
+        await player.setVolume(1);
+      } catch (_) {}
+      try {
+        await player.play();
+      } catch (_) {}
+    }());
     _emitPlaying(true);
   }
 
   @override
   Future<void> pause() async {
+    _userPaused = true;
     unawaited(player.pause());
     _emitPlaying(false);
+    unawaited(_releaseAudioFocus());
+    unawaited(_setPlaybackNetworkLock(false));
     // Second player is pure heat while paused.
     unawaited(clearStandby());
   }
@@ -138,16 +201,19 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
           .seek(Duration.zero)
           .timeout(const Duration(milliseconds: 500));
     } catch (_) {}
-    _emitPlaying(false);
   }
 
   @override
   Future<void> stop() async {
+    _userPaused = true;
+    _emitPlaying(false);
     await softStop();
     try {
       await player.stop();
     } catch (_) {}
     await clearStandby();
+    await _releaseAudioFocus();
+    await _setPlaybackNetworkLock(false);
     await super.stop();
   }
 
@@ -181,12 +247,10 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
           )
           .timeout(const Duration(seconds: 20));
       if (gen != _preloadGen) return;
+      // Keep full volume. Muting the standby player survived the swap on a
+      // locked screen, so the next track advanced with no sound.
       try {
-        await _standby.pause();
-      } catch (_) {}
-      // Cap standby buffer work: once ready, stop further loading if possible.
-      try {
-        await _standby.setVolume(0);
+        await _standby.setVolume(1);
       } catch (_) {}
     } catch (_) {
       if (gen == _preloadGen) {
@@ -219,6 +283,7 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
       playable: true,
     );
     mediaItem.add(item);
+    unawaited(_holdBackgroundAudio());
 
     // Hot path: next track already buffered on standby.
     if (_preloadedTrackId == track.id &&
@@ -237,6 +302,9 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
       if (dur != null && mediaItem.value != null) {
         mediaItem.add(mediaItem.value!.copyWith(duration: dur));
       }
+      _userPaused = false;
+      unawaited(player.play());
+      _emitPlaying(true);
       return;
     }
 
@@ -255,9 +323,16 @@ class MusikAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  bool _sessionPlaying(AudioPlayer p) {
+    if (_userPaused) return false;
+    // End of a track is not a pause. Reporting false here makes Android drop
+    // the foreground service before the next file starts loading.
+    return p.playing || p.processingState == ProcessingState.completed;
+  }
+
   void _broadcastState(PlaybackEvent event) {
     final p = player;
-    final playing = p.playing;
+    final playing = _sessionPlaying(p);
     // Throttle notification/session updates — high-freq events cook the CPU.
     final now = DateTime.now();
     if (_lastBroadcast != null &&
@@ -316,8 +391,11 @@ Future<MusikAudioHandler?> initMusikAudioService() async {
       androidNotificationChannelId: 'com.musik.musik_app.audio',
       androidNotificationChannelName: 'musik',
       androidNotificationIcon: 'drawable/ic_stat_musik',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      // Keep the foreground service and its wake lock across pauses and
+      // track changes. Dropping it on a locked screen leaves the progress
+      // bar moving from the last session state with no audio.
+      androidNotificationOngoing: false,
+      androidStopForegroundOnPause: false,
       // Helps SystemUI decode covers at a sane size.
       artDownscaleWidth: 256,
       artDownscaleHeight: 256,

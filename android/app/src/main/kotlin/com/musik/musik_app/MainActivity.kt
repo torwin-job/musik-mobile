@@ -9,8 +9,32 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : AudioServiceActivity() {
+    private val playbackLock by lazy { PlaybackNetworkLock(this) }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.musik.musik_app/playback_lock",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "acquire" -> {
+                    try {
+                        playbackLock.acquire()
+                    } catch (_: Exception) {
+                    }
+                    result.success(null)
+                }
+                "release" -> {
+                    try {
+                        playbackLock.release()
+                    } catch (_: Exception) {
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.musik.musik_app/files",
